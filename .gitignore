@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+
+# Local screenshots and tool state
+*preview.png
+.env
+.env.*
+!.env.example
