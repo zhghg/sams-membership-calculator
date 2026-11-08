@@ -68,10 +68,11 @@ export function withRenewal(result, months, enabled = true, otherBenefits = 0) {
   const includedBenefits=enabled?Math.max(0,Number(otherBenefits)||0):0;
   const renewalCredit=renewalEstimate(baseRewards,includedBenefits,enabled);
   const combinedNet=result.net+renewalCredit+includedBenefits;
-  // Annual other-benefit input has no timing information; recognize it with renewal.
-  const combinedCumulative=result.cumulative.map((value,i)=>value+(i===11?renewalCredit+includedBenefits:0));
+  // Spread annual renewal credit and other benefits evenly for the monthly projection.
+  const monthlyRenewalCredit=renewalCredit/12,monthlyOtherBenefits=includedBenefits/12;
+  const combinedCumulative=result.cumulative.map((value,i)=>value+(monthlyRenewalCredit+monthlyOtherBenefits)*(i+1));
   const paybackMonth=result.cost<=0?0:combinedCumulative.findIndex(value=>value>=-1e-8)+1;
-  return {...result,renewalEnabled:enabled,baseRewards,renewalCredit,otherBenefits:includedBenefits,combinedNet,combinedCumulative,paybackMonth:paybackMonth||null};
+  return {...result,renewalEnabled:enabled,baseRewards,renewalCredit,otherBenefits:includedBenefits,combinedNet,combinedCumulative,monthlyRenewalCredit,monthlyOtherBenefits,paybackMonth:result.cost<=0?0:paybackMonth||null};
 }
 export function annualSpendingThreshold(cost, outsideExtra = 0, renewalEnabled = false, otherBenefits = 0) {
   const other=renewalEnabled?Math.max(0,Number(otherBenefits)||0):0;

@@ -85,14 +85,19 @@ test('outside alone can cover fees without double-counting Sam spending',()=>{
   assert.equal(r.daily.find(p=>p.value>=0).day,r.breakEven);
 });
 
-test('renewal estimate adds only the unused guarantee and credits it at renewal',()=>{
+test('renewal estimate spreads the unused guarantee across all 12 months',()=>{
   const months=Array(12).fill(10000/12),result=withRenewal(calculate(months),months,true);
   assert.ok(Math.abs(result.baseRewards-200)<1e-8);
   assert.ok(Math.abs(result.renewalCredit-220)<1e-8);
   assert.ok(Math.abs(result.net+120)<1e-8);
   assert.ok(Math.abs(result.combinedNet-100)<1e-8);
-  assert.deepEqual(result.combinedCumulative.slice(0,11),result.cumulative.slice(0,11));
-  assert.equal(result.paybackMonth,12);
+  result.combinedCumulative.forEach((value,i)=>{
+    assert.ok(Math.abs(value-result.cumulative[i]-220*(i+1)/12)<1e-8);
+  });
+  assert.ok(Math.abs(result.monthlyRenewalCredit-220/12)<1e-8);
+  assert.ok(result.combinedCumulative[8]<0);
+  assert.ok(result.combinedCumulative[9]>0);
+  assert.equal(result.paybackMonth,10);
 });
 test('disabled guarantee preserves shopping-only loss',()=>{
   const months=Array(12).fill(10000/12),result=withRenewal(calculate(months),months,false,100);
@@ -114,4 +119,17 @@ test('guarantee uses only base Sam rewards, excludes bank and outside rebates',(
   const result=withRenewal(calculate(months,260,680,outside),months,true);
   assert.equal(result.baseRewards,480); assert.equal(result.renewalCredit,0);
   assert.equal(result.combinedNet,420); assert.equal(result.paybackMonth,6);
+});
+
+test('monthly allocation preserves annual total with uneven shopping and other benefits',()=>{
+  const months=[...Array(11).fill(0),10000];
+  const result=withRenewal(calculate(months),months,true,100);
+  assert.equal(result.renewalCredit,120);
+  assert.ok(Math.abs(result.monthlyOtherBenefits-100/12)<1e-8);
+  result.combinedCumulative.forEach((value,i)=>{
+    assert.ok(Math.abs(value-result.cumulative[i]-220*(i+1)/12)<1e-8);
+  });
+  assert.ok(Math.abs(result.combinedCumulative[11]-result.combinedNet)<1e-8);
+  assert.equal(result.paybackMonth,12);
+  assert.equal(withRenewal(calculate(months,260,260),months,true).paybackMonth,0);
 });
