@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {rebate,calculate,monthlyThreshold,outsideRebate} from './calculator.js';
+import {rebate,calculate,monthlyThreshold,outsideRebate,withRenewal,annualSpendingThreshold} from './calculator.js';
 test('rebate caps and ordinary baseline',()=>{
   for(const [spend,normal,plus] of [[0,0,0],[2000,20,80],[10000,100,400],[15000,100,500],[25000,100,700],[50000,100,700]]) {
     assert.equal(rebate(spend,false),normal); assert.equal(rebate(spend,true),plus);
@@ -83,4 +83,35 @@ test('outside alone can cover fees without double-counting Sam spending',()=>{
   assert.equal(r.net,180); assert.equal(r.spend,0); assert.equal(r.outsideExtra,600);
   assert.equal(monthlyThreshold(420-r.outsideExtra),0);
   assert.equal(r.daily.find(p=>p.value>=0).day,r.breakEven);
+});
+
+test('renewal estimate adds only the unused guarantee and credits it at renewal',()=>{
+  const months=Array(12).fill(10000/12),result=withRenewal(calculate(months),months,true);
+  assert.ok(Math.abs(result.baseRewards-200)<1e-8);
+  assert.ok(Math.abs(result.renewalCredit-220)<1e-8);
+  assert.ok(Math.abs(result.net+120)<1e-8);
+  assert.ok(Math.abs(result.combinedNet-100)<1e-8);
+  assert.deepEqual(result.combinedCumulative.slice(0,11),result.cumulative.slice(0,11));
+  assert.equal(result.paybackMonth,12);
+});
+test('disabled guarantee preserves shopping-only loss',()=>{
+  const months=Array(12).fill(10000/12),result=withRenewal(calculate(months),months,false,100);
+  assert.equal(result.renewalCredit,0); assert.equal(result.otherBenefits,0);
+  assert.equal(result.combinedNet,result.net); assert.equal(result.paybackMonth,null);
+});
+test('renewal coverage handles no spending, used benefits and member-fee changes',()=>{
+  const months=Array(12).fill(0),result=withRenewal(calculate(months),months,true,100);
+  assert.equal(result.renewalCredit,320); assert.equal(result.combinedNet,0);
+  assert.equal(result.paybackMonth,12);
+  assert.equal(withRenewal(calculate(months),months,true,500).renewalCredit,0);
+  assert.equal(annualSpendingThreshold(420,0,true),0);
+  assert.equal(annualSpendingThreshold(420,0,false),14000);
+  assert.equal(annualSpendingThreshold(600,0,true),18000);
+  assert.equal(annualSpendingThreshold(10000,0,true),null);
+});
+test('guarantee uses only base Sam rewards, excludes bank and outside rebates',()=>{
+  const months=Array(12).fill(2000),outside=Array(12).fill(30000);
+  const result=withRenewal(calculate(months,260,680,outside),months,true);
+  assert.equal(result.baseRewards,480); assert.equal(result.renewalCredit,0);
+  assert.equal(result.combinedNet,420); assert.equal(result.paybackMonth,6);
 });

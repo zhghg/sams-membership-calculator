@@ -58,3 +58,34 @@ export function dailySavings(months, cost, outsideMonths = []) {
   });
   return points;
 }
+
+// The renewal benefit is a next-term discount, not a cash refund.
+export function renewalEstimate(baseRewards, otherBenefits = 0, enabled = true) {
+  return enabled ? Math.max(0,420-baseRewards-Math.max(0,Number(otherBenefits)||0)) : 0;
+}
+export function withRenewal(result, months, enabled = true, otherBenefits = 0) {
+  const baseRewards=months.reduce((sum,value)=>sum+Math.min(Math.max(0,Number(value)||0)*.02,500),0);
+  const includedBenefits=enabled?Math.max(0,Number(otherBenefits)||0):0;
+  const renewalCredit=renewalEstimate(baseRewards,includedBenefits,enabled);
+  const combinedNet=result.net+renewalCredit+includedBenefits;
+  // Annual other-benefit input has no timing information; recognize it with renewal.
+  const combinedCumulative=result.cumulative.map((value,i)=>value+(i===11?renewalCredit+includedBenefits:0));
+  const paybackMonth=result.cost<=0?0:combinedCumulative.findIndex(value=>value>=-1e-8)+1;
+  return {...result,renewalEnabled:enabled,baseRewards,renewalCredit,otherBenefits:includedBenefits,combinedNet,combinedCumulative,paybackMonth:paybackMonth||null};
+}
+export function annualSpendingThreshold(cost, outsideExtra = 0, renewalEnabled = false, otherBenefits = 0) {
+  const other=renewalEnabled?Math.max(0,Number(otherBenefits)||0):0;
+  const net=annual=>{
+    const monthly=annual/12;
+    const base=Math.min(monthly*.02,500)*12;
+    return (rebate(monthly,true)-rebate(monthly,false))*12+outsideExtra+other+renewalEstimate(base,other,renewalEnabled)-cost;
+  };
+  if(net(0)>=-1e-8)return 0;
+  if(net(300000)<-1e-8)return null;
+  let low=0,high=300000;
+  for(let i=0;i<60;i++){
+    const mid=(low+high)/2;
+    if(net(mid)>=-1e-8)high=mid;else low=mid;
+  }
+  return Math.ceil(high*100-1e-6)/100;
+}
